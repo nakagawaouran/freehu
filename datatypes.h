@@ -12,7 +12,7 @@ struct PlayerData{
 
 struct EnemyData{
   int health, movePattern, maxBulletCD, xMov, yMov, bulletVelX, bulletVelY, points;
-}enemys[99] = {20, NULL, 10, 0, 1, 0, 10, 100};
+}enemys[99] = {20, 1, 10, 0, 1, 0, 10, 100};
 
 struct TextureData{
   SDL_Texture *texture;
@@ -20,14 +20,16 @@ struct TextureData{
 }bulletSprites[99], enemySprites[99];
 
 struct AliveEnemys{
-  int id, xMov, yMov, health, currentBulletCD, maxBulletCD, bulletVelX, bulletVelY, points, alive;
+  int id, xMov, yMov, health, currentBulletCD, maxBulletCD, bulletVelX, bulletVelY, points, alive, timer;
   SDL_Rect rect;
 }activeEnemys[99];
 
 struct BulletData{
   SDL_Rect rect;
-  int velX, velY, framePos, damage, textureID, timer, alive, id;
-}activePlayerBullets[99], activeEnemyBullets[300];
+  float velX, velY;
+  int framePos, damage, textureID, timer, alive, id;
+  float realX, realY;
+}activePlayerBullets[600], activeEnemyBullets[300];
 
 struct BackgroundArray{
   int bgIndex, fgIndex;

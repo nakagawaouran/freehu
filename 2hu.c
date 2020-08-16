@@ -6,14 +6,15 @@
 #include <unistd.h>
 #include <math.h>
 
+#define PI 3.14159265
 //Dimensions of the logical render size, Timing for game logic
 const int WIDTH = 640, HEIGHT = 480;
 const int FRAME_RATE_CAP = 60;
 const int TICKS_PER_FRAME = 1000 / FRAME_RATE_CAP;
 const int MAX_FRAMES = 8;
-
+const int SIZEOFPLAYERBULLETS = sizeof(activePlayerBullets) / sizeof(activePlayerBullets[0]);
 SDL_Rect getAnimPos(int *framePos, int w, int h);
-
+SDL_Rect screenRect = {0,0,HEIGHT,HEIGHT};
 int main(int argc, char const *argv[]) {
 
   //Initalizing SDL and TTF
@@ -25,12 +26,12 @@ int main(int argc, char const *argv[]) {
   SDL_GetCurrentDisplayMode(0, &current);
   int screenWidth = WIDTH, screenHeight = HEIGHT;
   if(current.w >= WIDTH*2 && current.h >= HEIGHT*2){
-    screenWidth = WIDTH*2;
-    screenHeight = HEIGHT*2;
+    screenWidth *= 2;
+    screenHeight *= 2;
   }
 
   //Create the Window, Renderer
-  SDL_Window *window = SDL_CreateWindow("2hu", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, screenWidth, screenHeight, 0);
+  SDL_Window *window = SDL_CreateWindow("freehu", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, screenWidth, screenHeight, 0);
   SDL_Renderer *renderMain = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   SDL_RenderSetLogicalSize(renderMain, WIDTH, HEIGHT);
 
@@ -38,36 +39,47 @@ int main(int argc, char const *argv[]) {
   player = playerClean;
   float globalY = 0.0;
   chdir("rez");
+
   SDL_Surface *temp = SDL_LoadBMP("test.bmp");
   player.texture = SDL_CreateTextureFromSurface(renderMain, temp);
   SDL_FreeSurface(temp);
 
-//  temp = SDL_LoadBMP("bg1.bmp");
-//  backgrounds.bGrounds[0] = SDL_CreateTextureFromSurface(renderMain, temp);
-  //SDL_FreeSurface(temp);
-  loadBackgrounds(renderMain, &backgrounds);
+  for(int i = 0; i < 8; i++){
+    loadRawTexture(renderMain, &backgrounds.bGrounds[i],"bg",i);
+    loadRawTexture(renderMain, &backgrounds.fGrounds[i],"fg",i);
+  }
 
-
-  loadTransparent(renderMain, "2.bmp", &bulletSprites[0].texture, &bulletSprites[0].width, &bulletSprites[0].height);
+  loadTextureData(renderMain, "2.bmp", &bulletSprites[0].texture, &bulletSprites[0].width, &bulletSprites[0].height);
+  loadTextureData(renderMain, "4.bmp", &bulletSprites[1].texture, &bulletSprites[1].width, &bulletSprites[1].height);
+  loadTextureData(renderMain, "0.bmp", &enemySprites[0].texture, &enemySprites[0].width, &enemySprites[0].height);
   printf("height: %d width: %d \n", bulletSprites[0].height, bulletSprites[0].width);
-  loadTransparent(renderMain, "2.bmp", &enemySprites[0].texture, &enemySprites[0].width, &enemySprites[0].height);
 
   chdir("..");
 
   //Main Game Loop
   int gameRunning = 1;
   SDL_Event event;
-  createEnemy(0, 200, 200, sizeof(activeEnemys)/sizeof(activeEnemys[0]));
-  while(gameRunning){
 
+  createEnemy(0, 200, 200, sizeof(activeEnemys)/sizeof(activeEnemys[0]));
+
+  while(gameRunning){
 
     SDL_SetRenderDrawColor(renderMain, 23, 23 ,23, 0xFF);
     SDL_RenderClear(renderMain);
-    renderBackground(renderMain, &backgrounds, &globalY);
+
+    renderBackground(renderMain, &backgrounds);
+
     updatePlayer(player, keyState);
-    updateEnemys(renderMain, sizeof(activeEnemys)/sizeof(activeEnemys[0]));
+
+    for(int i = 0, x = sizeof(activeEnemys)/sizeof(activeEnemys[0]); i < x; i++){
+      if(activeEnemys[i].alive){
+        updateEnemy(i);
+        renderEnemy(renderMain, i);
+      }
+    }
+
     renderPlayer(renderMain, player);
-    renderBullets(sizeof(activePlayerBullets)/sizeof(activePlayerBullets[0]), renderMain, activePlayerBullets);
+    renderBullets(SIZEOFPLAYERBULLETS, renderMain, activePlayerBullets);
     renderGUI(renderMain, player);
     SDL_RenderPresent(renderMain);
 
@@ -131,17 +143,6 @@ int main(int argc, char const *argv[]) {
     }
 
   }
-
-
-
-  SDL_RenderClear(renderMain);
-  SDL_RenderPresent(renderMain);
-  SDL_SetRenderDrawColor(renderMain, 222, 222, 222 ,0xFF);
-//  SDL_RenderFillRect(renderMain, &rect);
-  SDL_RenderPresent(renderMain);
-
-  SDL_Delay(2000);
-  printf("You");
   return 0;
 }
 
@@ -217,17 +218,19 @@ void updatePlayer(struct PlayerData p, struct KeyDownState ks){
 
   //Check to see if the player can shoot, they have to be holding down shoot key plus not be on a cooldown
   if(player.bulletCD <= 0 && ks.shoot == 1){
-    struct BulletData temp = { {player.rect.x + ( player.rect.w / 2 ) - 8, player.rect.y, 16, 16 }, 0, -20, 0, -20, 0, 0 ,0, 1};
-    createBullet(sizeof(activePlayerBullets)/sizeof(activePlayerBullets[0]), activePlayerBullets, temp);
-    temp.velX = 4;
-    temp.velY = -15;
-    createBullet(sizeof(activePlayerBullets)/sizeof(activePlayerBullets[0]), activePlayerBullets, temp);
-    temp.velX = -4;
-    createBullet(sizeof(activePlayerBullets)/sizeof(activePlayerBullets[0]), activePlayerBullets, temp);
-
-    player.bulletCD = 6;
+    shootBullet(activePlayerBullets, player.rect, 0);
+    player.bulletCD = 0;
   }
 
+}
+
+int checkCollision(struct BulletData *bd, SDL_Rect target){
+  if(SDL_HasIntersection(&bd->rect,&target) == SDL_TRUE){
+    bd->alive = 0;
+    printf("hit");
+    return 1;
+  }
+  return 0;
 }
 
 void renderPlayer(SDL_Renderer *r, struct PlayerData p){
@@ -244,32 +247,63 @@ void renderGUI(SDL_Renderer *r, struct PlayerData p){
   SDL_RenderFillRect(r, &sidebar);
 }
 
+void transformBullet(struct BulletData *bullet){
+  bullet->realX+=bullet->velX;
+  bullet->realY+=bullet->velY;
+  bullet->rect.x=(int)bullet->realX;
+  bullet->rect.y=(int)bullet->realY;
+
+}
+
 void renderBullets(int size, SDL_Renderer *r, struct BulletData activeList[]){
   for(int i = 0; i < size; i++){
     if(activeList[i].alive == 1){
       //Move the bullets
-      activeList[i].rect.x+=activeList[i].velX;
-      activeList[i].rect.y+=activeList[i].velY;
+      moveBullet(&activeList[i]);
+      transformBullet(&activeList[i]);
 
       //Check if bullets are out bounds
-      if(activeList[i].rect.x < 0 - activeList[i].rect.w){
-        activeList[i].alive = 0;
-      }else if(activeList[i].rect.x > HEIGHT){
-        activeList[i].alive = 0;
-      }
-      if(activeList[i].rect.y < 0 - activeList[i].rect.h){
-        activeList[i].alive = 0;
-      }else if(activeList[i].rect.y > HEIGHT){
+
+      if(SDL_HasIntersection(&activeList[i].rect,&screenRect) == SDL_FALSE){
         activeList[i].alive = 0;
       }
 
-      if (activeList[i].alive == 1){\
+      if (activeList[i].alive == 1){
+      activeList[i].timer++;
       //animate the bullet and draw it to the screen
       // NOTE THAT THE getAnimPos FUNCTION ALREADY INCREMENTS THE FRAME POSITION FOR YOU, THERE IS NO NEED TO DO IT YOURSELF
       SDL_Rect framePosRect = getAnimPos(&activeList[i].framePos, bulletSprites[activeList[i].textureID].width, bulletSprites[activeList[i].textureID].height);
       SDL_RenderCopy(r, bulletSprites[activeList[i].textureID].texture, &framePosRect, &activeList[i].rect);
     }
   }
+  }
+}
+
+//createBullet(sizeof(activePlayerBullets)/sizeof(activePlayerBullets[0]), activePlayerBullets, temp);
+//struct BulletData temp = { {player.rect.x + ( player.rect.w / 2 ) - 8, player.rect.y, 16, 16 }, 0, -20, 0, -20, 0, 0 ,0, 1};
+
+void shootBullet(struct BulletData activeList[], SDL_Rect orgin, int id){
+  struct BulletData temp;
+  switch(id){
+    case 0:
+      temp = (struct BulletData){ {0,0,16,16}, 0, -20, 0, -20, 0, 0,0, 0, orgin.x + ( orgin.w / 2 ) - 8, orgin.y};
+      createBullet(SIZEOFPLAYERBULLETS, activePlayerBullets, temp);
+      break;
+    case 99:
+      for(int i = 0; i < 360; i+=10){
+          temp = (struct BulletData){ {0,0,16,16}, 0.1*cos(i*PI/180), 0.4*sin(i*PI/180), 0, -20, 0, i,0, 1, orgin.x + ( orgin.w / 2 ) - 8, orgin.y};
+          createBullet(SIZEOFPLAYERBULLETS, activePlayerBullets, temp);
+
+      }
+      break;
+  }
+}
+
+SDL_Rect findEnemyCoords(){
+  for(int i = 0, x = sizeof(activeEnemys)/sizeof(activeEnemys[0]); i < x; i++){
+    if(activeEnemys[i].alive){
+      return activeEnemys[i].rect;
+    }
   }
 }
 
@@ -295,6 +329,7 @@ void createEnemy(int id, int x, int y, int size){
       activeEnemys[i].points = enemys[i].points;
       activeEnemys[i].xMov = enemys[i].xMov;
       activeEnemys[i].yMov = enemys[i].yMov;
+      activeEnemys[i].timer = 0;
       SDL_Rect temp = {x, y, enemySprites[id].width, enemySprites[id].height};
       activeEnemys[i].rect = temp;
       activeEnemys[i].alive = 1;
@@ -303,60 +338,72 @@ void createEnemy(int id, int x, int y, int size){
   }
 }
 
-void updateEnemys(SDL_Renderer *r, int size){
-  SDL_SetRenderDrawColor(r, 0xFF, 0xFF, 0, 0xFF);
-  for(int i = 0; i < size; i++){
-    if(activeEnemys[i].alive == 1){
-      switch(activeEnemys[i].id){
-      }
-      activeEnemys[i].rect.x+=enemys[i].xMov;
-      activeEnemys[i].rect.y+=enemys[i].yMov;
-
-      SDL_RenderFillRect(r, &activeEnemys[i].rect);
-    }
-
-  }
-
-}
-/*temp = SDL_LoadBMP("bg1.bmp");
-backgrounds.bGrounds[0] = SDL_CreateTextureFromSurface(renderMain, temp);
-SDL_FreeSurface(temp);*/
-
-void loadBackgrounds(SDL_Renderer *r, struct BackgroundArray *bgArray){
-  SDL_Surface *temp;
-  int running = 1, i = 0, charpos = 0;
-  char name[16], prefix[][4] = {"bg","fg"};
-  while(running){
-    sprintf(name, "%s%d.bmp",prefix[charpos],i);
-    if((temp = SDL_LoadBMP(name)) != NULL){
-      if(charpos == 1){
-        SDL_SetColorKey(temp, SDL_TRUE, SDL_MapRGB(temp->format, 0xFF, 0, 0xFF) );
-        bgArray->fGrounds[i] = SDL_CreateTextureFromSurface(r, temp);
-      }else{
-        bgArray->bGrounds[i] = SDL_CreateTextureFromSurface(r, temp);
-      }
-      SDL_FreeSurface(temp);
-    }else {
-      sprintf(name, "%s%d.bmp",prefix[0],i);
-      if(SDL_LoadBMP(name) == NULL){
-        sprintf(name, "%s%d.bmp",prefix[1],i);
-        if(SDL_LoadBMP(name) == NULL){
-          running = 0;
+void updateEnemy(int num){
+      for(int i = 0; i < SIZEOFPLAYERBULLETS; i++){
+        if(activePlayerBullets[i].alive){
+          checkCollision(&activePlayerBullets[i], activeEnemys[num].rect);
         }
       }
-    }
-    if(charpos == 0){
-      charpos++;
-    }else{
-      charpos--;
-      i++;
-    }
+      moveEnemy(&activeEnemys[num]);
+      activeEnemys[num].rect.x+=activeEnemys[num].xMov;
+      activeEnemys[num].rect.y+=activeEnemys[num].yMov;
+      activeEnemys[num].timer+=1;
+}
+
+void renderEnemy(SDL_Renderer *r, int num){
+  SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
+//  SDL_Rect test = {activeEnemys[num].rect.x,activeEnemys[num].rect.y,activeEnemys[num].rect.w,activeEnemys[num].rect.h};
+  SDL_Rect test = {activeEnemys[num].rect.x,activeEnemys[num].rect.y,enemySprites[activeEnemys[num].id].width,enemySprites[activeEnemys[num].id].height};
+  SDL_RenderCopy(r, enemySprites[activeEnemys[num].id].texture, NULL, &test);
+}
+
+void moveBullet(struct BulletData *bullet){
+  SDL_Rect temp = {0,0,0,0};
+  switch(bullet->id){
+    case 1:
+      bullet->velX*=1.05;
+    //  bullet->velY*=1.05;
+     bullet->velY=0.9*(bullet->timer%10)*cos(bullet->timer*PI/180);
+      break;
+    case 2:
+      if(bullet->timer % 20 == 19){
+        shootBullet(activePlayerBullets,bullet->rect,991);
+      }
+      break;
   }
-SDL_FreeSurface(temp);
+}
+
+void moveEnemy(struct AliveEnemys *enemy){
+  switch (enemys[enemy->id].movePattern){
+    case 0:
+      enemy->xMov = (player.rect.x + player.rect.w - enemy->rect.x) / 50;
+      enemy->yMov = (player.rect.y + player.rect.h - enemy->rect.y) / 50;
+      break;
+    case 1:
+      if(enemy->timer%15 == 0){
+        enemy->xMov = rand()%4 - 2;
+        enemy->yMov = rand()%4 - 2;
+
+      }
+      break;
+  }
+}
+
+void loadRawTexture(SDL_Renderer *r, SDL_Texture **target, char prefix[4], int i){
+  SDL_Surface *temp;
+  char name[16];
+  sprintf(name, "%s%d.bmp", prefix, i);
+  if((temp = SDL_LoadBMP(name)) != NULL){
+    if(strcmp(prefix, "fg") == 0){
+       SDL_SetColorKey(temp, SDL_TRUE, SDL_MapRGB(temp->format, 0xFF, 0, 0xFF) );
+    }
+    *target = SDL_CreateTextureFromSurface(r, temp);
+  }
+  SDL_FreeSurface(temp);
 }
 
 //Use to load an image with a bg of (0xFF, 0, 0xFF) as the alpha channel, works for TextureData things like bullets, chracters, enemys, particles
-void loadTransparent(SDL_Renderer *r, char path[], SDL_Texture **tex, int *width, int *height){
+void loadTextureData(SDL_Renderer *r, char path[], SDL_Texture **tex, int *width, int *height){
   SDL_Surface *temp;
   //Check to see if the path can be found, if it is than it will continue
   if((temp = SDL_LoadBMP(path)) != NULL){
